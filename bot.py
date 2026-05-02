@@ -1,10 +1,10 @@
 import os
 import json
 import logging
+import requests
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
-import google.generativeai as genai
 import base64
 import re
 from pymongo import MongoClient
@@ -12,8 +12,8 @@ from pymongo import MongoClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
 
 client = MongoClient(os.environ.get("MONGODB_URL"))
 db = client["despesas"]
@@ -25,7 +25,16 @@ def get_next_id():
         return ultimo["id"] + 1
     return 1
 
-def analyze_with_gemini(text):
+def call_gemini(prompt):
+    body = {"contents": [{"parts": [{"text": prompt}]}]}
+    response = requests.post(GEMINI_URL, json=body)
+    result = response.json()
+    text = result["candidates"][0]["content"]["parts"][0]["text"]
+    text = re.sub(r'```json\n?', '', text.strip())
+    text = re.sub(r'```\n?', '', text)
+    return json.loads(text.strip())
+
+def analyze_text(text):
     prompt = f"""Analisa esta mensagem e extrai informacao financeira.
 Mensagem: "{text}"
 Responde APENAS com um JSON valido neste formato exato:
@@ -37,18 +46,13 @@ Responde APENAS com um JSON valido neste formato exato:
   "encontrado": true ou false
 }}
 Se nao encontrares informacao financeira, poe "encontrado": false."""
-    response = model.generate_content(prompt)
-    text_response = response.text.strip()
-    text_response = re.sub(r'```json\n?', '', text_response)
-    text_response = re.sub(r'```\n?', '', text_response)
-    return json.loads(text_response)
+    return call_gemini(prompt)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Ola! Sou o teu bot de despesas!\n\n"
         "Podes enviar:\n"
         "Texto: ex: Gastei 4 euros no cafe\n"
-        "Audio: fala a tua despesa\n"
         "Foto: foto de um recibo\n\n"
         "Comandos:\n"
         "/resumo - Resumo do mes atual\n"
@@ -82,7 +86,7 @@ async def save_and_reply(update: Update, resultado: dict):
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    resultado = analyze_with_gemini(update.message.text)
+    resultado = analyze_text(update.message.text)
     await save_and_reply(update, resultado)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,10 +104,13 @@ Responde APENAS com JSON:
   "descricao": "descricao do recibo",
   "encontrado": true ou false
 }"""
-    response = model.generate_content([prompt, {"mime_type": "image/jpeg", "data": photo_b64}])
-    text_response = re.sub(r'```json\n?', '', response.text.strip())
-    text_response = re.sub(r'```\n?', '', text_response)
-    resultado = json.loads(text_response)
+    body = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": photo_b64}}]}]}
+    response = requests.post(GEMINI_URL, json=body)
+    result = response.json()
+    text = result["candidates"][0]["content"]["parts"][0]["text"]
+    text = re.sub(r'```json\n?', '', text.strip())
+    text = re.sub(r'```\n?', '', text)
+    resultado = json.loads(text.strip())
     await save_and_reply(update, resultado)
 
 async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
