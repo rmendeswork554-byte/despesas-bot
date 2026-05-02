@@ -54,7 +54,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Comandos:\n"
         "/resumo - Resumo do mes atual\n"
         "/ano - Resumo anual\n"
-        "/lista - Ultimos registos"
+        "/lista - Ultimos registos\n"
+        "/apagar - Apagar um registo"
     )
 
 async def save_and_reply(update: Update, resultado: dict):
@@ -76,7 +77,7 @@ async def save_and_reply(update: Update, resultado: dict):
     save_data(data)
     tipo_str = "Despesa" if resultado["tipo"] == "despesa" else "Ganho"
     await update.message.reply_text(
-        tipo_str + " registado!\n\n"
+        tipo_str + " registado! (ID: " + str(registo["id"]) + ")\n\n"
         "Valor: " + str(resultado["valor"]) + " euros\n"
         "Categoria: " + resultado["categoria"] + "\n"
         "Descricao: " + resultado["descricao"] + "\n"
@@ -133,6 +134,37 @@ Responde APENAS com JSON:
     text_response = re.sub(r'```\n?', '', text_response)
     resultado = json.loads(text_response)
     await save_and_reply(update, resultado)
+
+async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = load_data()
+    if not data["registos"]:
+        await update.message.reply_text("Nao tens registos para apagar!")
+        return
+    if not context.args:
+        ultimos = data["registos"][-5:][::-1]
+        msg = "Para apagar usa: /apagar ID\n\nUltimos registos:\n\n"
+        for r in ultimos:
+            sinal = "-" if r["tipo"] == "despesa" else "+"
+            msg += "ID " + str(r["id"]) + ": " + r["data"] + " - " + r["categoria"] + " " + sinal + str(round(r["valor"], 2)) + " euros\n"
+        await update.message.reply_text(msg)
+        return
+    try:
+        id_apagar = int(context.args[0])
+        registo = next((r for r in data["registos"] if r["id"] == id_apagar), None)
+        if not registo:
+            await update.message.reply_text("Registo ID " + str(id_apagar) + " nao encontrado!")
+            return
+        data["registos"] = [r for r in data["registos"] if r["id"] != id_apagar]
+        save_data(data)
+        await update.message.reply_text(
+            "Registo apagado!\n"
+            "ID: " + str(id_apagar) + "\n"
+            "Data: " + registo["data"] + "\n"
+            "Categoria: " + registo["categoria"] + "\n"
+            "Valor: " + str(round(registo["valor"], 2)) + " euros"
+        )
+    except ValueError:
+        await update.message.reply_text("Usa assim: /apagar 5 (onde 5 e o ID do registo)")
 
 async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
@@ -202,7 +234,7 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "Ultimos registos:\n\n"
     for r in ultimos:
         sinal = "-" if r["tipo"] == "despesa" else "+"
-        msg += r["data"] + " - " + r["categoria"] + "\n"
+        msg += "ID " + str(r["id"]) + ": " + r["data"] + " - " + r["categoria"] + "\n"
         msg += sinal + str(round(r["valor"], 2)) + " euros - " + r["descricao"] + "\n\n"
     await update.message.reply_text(msg)
 
@@ -213,6 +245,7 @@ def main():
     app.add_handler(CommandHandler("resumo", resumo))
     app.add_handler(CommandHandler("ano", ano))
     app.add_handler(CommandHandler("lista", lista))
+    app.add_handler(CommandHandler("apagar", apagar))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_audio))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
