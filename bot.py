@@ -27,17 +27,17 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def analyze_with_gemini(text):
-    prompt = f"""Analisa esta mensagem e extrai informação financeira.
+    prompt = f"""Analisa esta mensagem e extrai informacao financeira.
 Mensagem: "{text}"
-Responde APENAS com um JSON válido neste formato exato:
+Responde APENAS com um JSON valido neste formato exato:
 {{
   "tipo": "despesa" ou "ganho",
   "valor": numero,
-  "categoria": "Alimentação" ou "Transporte" ou "Saúde" ou "Lazer" ou "Casa" ou "Investimentos" ou "Salário" ou "Outros",
-  "descricao": "descrição curta",
+  "categoria": "Alimentacao" ou "Transporte" ou "Saude" ou "Lazer" ou "Casa" ou "Investimentos" ou "Salario" ou "Outros",
+  "descricao": "descricao curta",
   "encontrado": true ou false
 }}
-Se não encontrares informação financeira, põe "encontrado": false."""
+Se nao encontrares informacao financeira, poe "encontrado": false."""
     response = model.generate_content(prompt)
     text_response = response.text.strip()
     text_response = re.sub(r'```json\n?', '', text_response)
@@ -46,20 +46,20 @@ Se não encontrares informação financeira, põe "encontrado": false."""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Olá! Sou o teu bot de despesas!\n\n"
+        "Ola! Sou o teu bot de despesas!\n\n"
         "Podes enviar:\n"
-        "💬 Texto — ex: Gastei 4€ no café\n"
-        "🎤 Áudio — fala a tua despesa\n"
-        "📷 Foto — foto de um recibo\n\n"
+        "Texto: ex: Gastei 4 euros no cafe\n"
+        "Audio: fala a tua despesa\n"
+        "Foto: foto de um recibo\n\n"
         "Comandos:\n"
-        "/resumo — Resumo do mês atual\n"
-        "/ano — Resumo anual\n"
-        "/lista — Últimos registos"
+        "/resumo - Resumo do mes atual\n"
+        "/ano - Resumo anual\n"
+        "/lista - Ultimos registos"
     )
 
 async def save_and_reply(update: Update, resultado: dict):
     if not resultado.get('encontrado'):
-        await update.message.reply_text("❌ Não identifiquei despesa ou ganho. Tenta ser mais específico!")
+        await update.message.reply_text("Nao identifiquei despesa ou ganho. Tenta ser mais especifico!")
         return
     data = load_data()
     registo = {
@@ -74,14 +74,13 @@ async def save_and_reply(update: Update, resultado: dict):
     }
     data["registos"].append(registo)
     save_data(data)
-    emoji = "💸" if resultado["tipo"] == "despesa" else "💰"
     tipo_str = "Despesa" if resultado["tipo"] == "despesa" else "Ganho"
     await update.message.reply_text(
-        f"{emoji} {tipo_str} registado!\n\n"
-        f"💶 Valor: {resultado['valor']:.2f}€\n"
-        f"📂 Categoria: {resultado['categoria']}\n"
-        f"📝 {resultado['descricao']}\n"
-        f"📅 {registo['data']}"
+        tipo_str + " registado!\n\n"
+        "Valor: " + str(resultado["valor"]) + " euros\n"
+        "Categoria: " + resultado["categoria"] + "\n"
+        "Descricao: " + resultado["descricao"] + "\n"
+        "Data: " + registo["data"]
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,20 +88,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await save_and_reply(update, resultado)
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎤 A processar o áudio...")
+    await update.message.reply_text("A processar o audio...")
     if update.message.voice:
         file = await update.message.voice.get_file()
     else:
         file = await update.message.audio.get_file()
     audio_data = await file.download_as_bytearray()
     audio_b64 = base64.b64encode(audio_data).decode()
-    prompt = """Transcreve este áudio e extrai informação financeira.
+    prompt = """Transcreve este audio e extrai informacao financeira.
 Responde APENAS com JSON:
 {
   "tipo": "despesa" ou "ganho",
   "valor": numero,
-  "categoria": "Alimentação" ou "Transporte" ou "Saúde" ou "Lazer" ou "Casa" ou "Investimentos" ou "Salário" ou "Outros",
-  "descricao": "descrição curta",
+  "categoria": "Alimentacao" ou "Transporte" ou "Saude" ou "Lazer" ou "Casa" ou "Investimentos" ou "Salario" ou "Outros",
+  "descricao": "descricao curta",
   "encontrado": true ou false,
   "transcricao": "texto transcrito"
 }"""
@@ -111,11 +110,11 @@ Responde APENAS com JSON:
     text_response = re.sub(r'```\n?', '', text_response)
     resultado = json.loads(text_response)
     if resultado.get('transcricao'):
-        await update.message.reply_text(f"🎤 Transcrição: {resultado['transcricao']}")
+        await update.message.reply_text("Transcricao: " + resultado["transcricao"])
     await save_and_reply(update, resultado)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📷 A analisar a foto...")
+    await update.message.reply_text("A analisar a foto...")
     photo = update.message.photo[-1]
     file = await photo.get_file()
     photo_data = await file.download_as_bytearray()
@@ -125,8 +124,8 @@ Responde APENAS com JSON:
 {
   "tipo": "despesa",
   "valor": numero,
-  "categoria": "Alimentação" ou "Transporte" ou "Saúde" ou "Lazer" ou "Casa" ou "Investimentos" ou "Outros",
-  "descricao": "descrição do recibo",
+  "categoria": "Alimentacao" ou "Transporte" ou "Saude" ou "Lazer" ou "Casa" ou "Investimentos" ou "Outros",
+  "descricao": "descricao do recibo",
   "encontrado": true ou false
 }"""
     response = model.generate_content([prompt, {"mime_type": "image/jpeg", "data": photo_b64}])
@@ -140,7 +139,7 @@ async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mes_atual = datetime.now().strftime("%Y-%m")
     registos_mes = [r for r in data["registos"] if r["mes"] == mes_atual]
     if not registos_mes:
-        await update.message.reply_text("📊 Ainda não tens registos este mês!")
+        await update.message.reply_text("Ainda nao tens registos este mes!")
         return
     total_despesas = sum(r["valor"] for r in registos_mes if r["tipo"] == "despesa")
     total_ganhos = sum(r["valor"] for r in registos_mes if r["tipo"] == "ganho")
@@ -151,18 +150,18 @@ async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if cat not in categorias:
             categorias[cat] = {"despesa": 0, "ganho": 0}
         categorias[cat][r["tipo"]] += r["valor"]
-    nomes_meses = {"01":"Janeiro","02":"Fevereiro","03":"Março","04":"Abril","05":"Maio","06":"Junho","07":"Julho","08":"Agosto","09":"Setembro","10":"Outubro","11":"Novembro","12":"Dezembro"}
+    nomes_meses = {"01":"Janeiro","02":"Fevereiro","03":"Marco","04":"Abril","05":"Maio","06":"Junho","07":"Julho","08":"Agosto","09":"Setembro","10":"Outubro","11":"Novembro","12":"Dezembro"}
     nome_mes = nomes_meses[mes_atual.split("-")[1]]
-    msg = f"📊 Resumo de {nome_mes}\n\n"
-    msg += f"💰 Ganhos: {total_ganhos:.2f}€\n"
-    msg += f"💸 Despesas: {total_despesas:.2f}€\n"
-    msg += f"{'✅' if saldo >= 0 else '❌'} Saldo: {saldo:.2f}€\n\n"
-    msg += "📂 Por categoria:\n"
+    msg = "Resumo de " + nome_mes + "\n\n"
+    msg += "Ganhos: " + str(round(total_ganhos, 2)) + " euros\n"
+    msg += "Despesas: " + str(round(total_despesas, 2)) + " euros\n"
+    msg += "Saldo: " + str(round(saldo, 2)) + " euros\n\n"
+    msg += "Por categoria:\n"
     for cat, valores in categorias.items():
         if valores["despesa"] > 0:
-            msg += f"  • {cat}: -{valores['despesa']:.2f}€\n"
+            msg += "  " + cat + ": -" + str(round(valores["despesa"], 2)) + " euros\n"
         if valores["ganho"] > 0:
-            msg += f"  • {cat}: +{valores['ganho']:.2f}€\n"
+            msg += "  " + cat + ": +" + str(round(valores["ganho"], 2)) + " euros\n"
     await update.message.reply_text(msg)
 
 async def ano(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,7 +169,7 @@ async def ano(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ano_atual = datetime.now().strftime("%Y")
     registos_ano = [r for r in data["registos"] if r["ano"] == ano_atual]
     if not registos_ano:
-        await update.message.reply_text(f"📊 Ainda não tens registos em {ano_atual}!")
+        await update.message.reply_text("Ainda nao tens registos em " + ano_atual)
         return
     total_despesas = sum(r["valor"] for r in registos_ano if r["tipo"] == "despesa")
     total_ganhos = sum(r["valor"] for r in registos_ano if r["tipo"] == "ganho")
@@ -181,27 +180,44 @@ async def ano(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if mes not in meses:
             meses[mes] = {"despesa": 0, "ganho": 0}
         meses[mes][r["tipo"]] += r["valor"]
-    nomes_meses = {"01":"Janeiro","02":"Fevereiro","03":"Março","04":"Abril","05":"Maio","06":"Junho","07":"Julho","08":"Agosto","09":"Setembro","10":"Outubro","11":"Novembro","12":"Dezembro"}
-    msg = f"📊 Resumo Anual {ano_atual}\n\n"
-    msg += f"💰 Total Ganhos: {total_ganhos:.2f}€\n"
-    msg += f"💸 Total Despesas: {total_despesas:.2f}€\n"
-    msg += f"{'✅' if saldo >= 0 else '❌'} Saldo: {saldo:.2f}€\n\n"
-    msg += "📅 Por mês:\n"
+    nomes_meses = {"01":"Janeiro","02":"Fevereiro","03":"Marco","04":"Abril","05":"Maio","06":"Junho","07":"Julho","08":"Agosto","09":"Setembro","10":"Outubro","11":"Novembro","12":"Dezembro"}
+    msg = "Resumo Anual " + ano_atual + "\n\n"
+    msg += "Total Ganhos: " + str(round(total_ganhos, 2)) + " euros\n"
+    msg += "Total Despesas: " + str(round(total_despesas, 2)) + " euros\n"
+    msg += "Saldo: " + str(round(saldo, 2)) + " euros\n\n"
+    msg += "Por mes:\n"
     for mes in sorted(meses.keys()):
         nome_mes = nomes_meses[mes.split("-")[1]]
         saldo_mes = meses[mes]["ganho"] - meses[mes]["despesa"]
-        emoji = "✅" if saldo_mes >= 0 else "❌"
-        msg += f"  {emoji} {nome_mes}: {saldo_mes:+.2f}€\n"
+        sinal = "+" if saldo_mes >= 0 else ""
+        msg += "  " + nome_mes + ": " + sinal + str(round(saldo_mes, 2)) + " euros\n"
     await update.message.reply_text(msg)
 
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     if not data["registos"]:
-        await update.message.reply_text("📋 Ainda não tens registos!")
+        await update.message.reply_text("Ainda nao tens registos!")
         return
     ultimos = data["registos"][-10:][::-1]
-    msg = "📋 Últimos registos:\n\n"
+    msg = "Ultimos registos:\n\n"
     for r in ultimos:
-        emoji = "💸" if r["tipo"] == "despesa" else "💰"
         sinal = "-" if r["tipo"] == "despesa" else "+"
-        msg += f"{emoji} {r['data'
+        msg += r["data"] + " - " + r["categoria"] + "\n"
+        msg += sinal + str(round(r["valor"], 2)) + " euros - " + r["descricao"] + "\n\n"
+    await update.message.reply_text(msg)
+
+def main():
+    token = os.environ.get("TELEGRAM_TOKEN")
+    app = Application.builder().token(token).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("resumo", resumo))
+    app.add_handler(CommandHandler("ano", ano))
+    app.add_handler(CommandHandler("lista", lista))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_audio))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    logger.info("Bot iniciado!")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
