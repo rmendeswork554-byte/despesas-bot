@@ -7,6 +7,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 import google.generativeai as genai
 import base64
 import re
+from pymongo import MongoClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,17 +15,15 @@ logger = logging.getLogger(__name__)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-DATA_FILE = "despesas.json"
+client = MongoClient(os.environ.get("MONGODB_URL"))
+db = client["despesas"]
+col = db["registos"]
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {"registos": []}
-
-def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def get_next_id():
+    ultimo = col.find_one(sort=[("id", -1)])
+    if ultimo:
+        return ultimo["id"] + 1
+    return 1
 
 def analyze_with_gemini(text):
     prompt = f"""Analisa esta mensagem e extrai informacao financeira.
@@ -62,9 +61,8 @@ async def save_and_reply(update: Update, resultado: dict):
     if not resultado.get('encontrado'):
         await update.message.reply_text("Nao identifiquei despesa ou ganho. Tenta ser mais especifico!")
         return
-    data = load_data()
     registo = {
-        "id": len(data["registos"]) + 1,
+        "id": get_next_id(),
         "tipo": resultado["tipo"],
         "valor": float(resultado["valor"]),
         "categoria": resultado["categoria"],
@@ -73,8 +71,7 @@ async def save_and_reply(update: Update, resultado: dict):
         "mes": datetime.now().strftime("%Y-%m"),
         "ano": datetime.now().strftime("%Y")
     }
-    data["registos"].append(registo)
-    save_data(data)
+    col.insert_one(registo)
     tipo_str = "Despesa" if resultado["tipo"] == "despesa" else "Ganho"
     await update.message.reply_text(
         tipo_str + " registado! (ID: " + str(registo["id"]) + ")\n\n"
@@ -136,12 +133,11 @@ Responde APENAS com JSON:
     await save_and_reply(update, resultado)
 
 async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    if not data["registos"]:
-        await update.message.reply_text("Nao tens registos para apagar!")
-        return
     if not context.args:
-        ultimos = data["registos"][-5:][::-1]
+        ultimos = list(col.find().sort("id", -1).limit(5))
+        if not ultimos:
+            await update.message.reply_text("Nao tens registos para apagar!")
+            return
         msg = "Para apagar usa: /apagar ID\n\nUltimos registos:\n\n"
         for r in ultimos:
             sinal = "-" if r["tipo"] == "despesa" else "+"
@@ -150,12 +146,11 @@ async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         id_apagar = int(context.args[0])
-        registo = next((r for r in data["registos"] if r["id"] == id_apagar), None)
+        registo = col.find_one({"id": id_apagar})
         if not registo:
             await update.message.reply_text("Registo ID " + str(id_apagar) + " nao encontrado!")
             return
-        data["registos"] = [r for r in data["registos"] if r["id"] != id_apagar]
-        save_data(data)
+        col.delete_one({"id": id_apagar})
         await update.message.reply_text(
             "Registo apagado!\n"
             "ID: " + str(id_apagar) + "\n"
@@ -167,9 +162,8 @@ async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usa assim: /apagar 5 (onde 5 e o ID do registo)")
 
 async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
     mes_atual = datetime.now().strftime("%Y-%m")
-    registos_mes = [r for r in data["registos"] if r["mes"] == mes_atual]
+    registos_mes = list(col.find({"mes": mes_atual}))
     if not registos_mes:
         await update.message.reply_text("Ainda nao tens registos este mes!")
         return
@@ -197,9 +191,8 @@ async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def ano(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
     ano_atual = datetime.now().strftime("%Y")
-    registos_ano = [r for r in data["registos"] if r["ano"] == ano_atual]
+    registos_ano = list(col.find({"ano": ano_atual}))
     if not registos_ano:
         await update.message.reply_text("Ainda nao tens registos em " + ano_atual)
         return
@@ -226,11 +219,10 @@ async def ano(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    if not data["registos"]:
+    ultimos = list(col.find().sort("id", -1).limit(10))
+    if not ultimos:
         await update.message.reply_text("Ainda nao tens registos!")
         return
-    ultimos = data["registos"][-10:][::-1]
     msg = "Ultimos registos:\n\n"
     for r in ultimos:
         sinal = "-" if r["tipo"] == "despesa" else "+"
