@@ -26,13 +26,19 @@ def get_next_id():
     return 1
 
 def call_gemini(prompt):
-    body = {"contents": [{"parts": [{"text": prompt}]}]}
-    response = requests.post(GEMINI_URL, json=body)
-    result = response.json()
-    text = result["candidates"][0]["content"]["parts"][0]["text"]
-    text = re.sub(r'```json\n?', '', text.strip())
-    text = re.sub(r'```\n?', '', text)
-    return json.loads(text.strip())
+    try:
+        body = {"contents": [{"parts": [{"text": prompt}]}]}
+        response = requests.post(GEMINI_URL, json=body, timeout=30)
+        logger.info(f"Gemini response status: {response.status_code}")
+        logger.info(f"Gemini response: {response.text[:500]}")
+        result = response.json()
+        text = result["candidates"][0]["content"]["parts"][0]["text"]
+        text = re.sub(r'```json\n?', '', text.strip())
+        text = re.sub(r'```\n?', '', text)
+        return json.loads(text.strip())
+    except Exception as e:
+        logger.error(f"Gemini error: {e}")
+        raise e
 
 def analyze_text(text):
     prompt = f"""Analisa esta mensagem e extrai informacao financeira.
@@ -86,16 +92,22 @@ async def save_and_reply(update: Update, resultado: dict):
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    resultado = analyze_text(update.message.text)
-    await save_and_reply(update, resultado)
+    try:
+        logger.info(f"Mensagem recebida: {update.message.text}")
+        resultado = analyze_text(update.message.text)
+        await save_and_reply(update, resultado)
+    except Exception as e:
+        logger.error(f"Erro handle_text: {e}")
+        await update.message.reply_text("Erro ao processar. Tenta novamente!")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("A analisar a foto...")
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-    photo_data = await file.download_as_bytearray()
-    photo_b64 = base64.b64encode(photo_data).decode()
-    prompt = """Analisa este recibo e extrai o valor total e tipo de despesa.
+    try:
+        await update.message.reply_text("A analisar a foto...")
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+        photo_data = await file.download_as_bytearray()
+        photo_b64 = base64.b64encode(photo_data).decode()
+        prompt = """Analisa este recibo e extrai o valor total e tipo de despesa.
 Responde APENAS com JSON:
 {
   "tipo": "despesa",
@@ -104,14 +116,17 @@ Responde APENAS com JSON:
   "descricao": "descricao do recibo",
   "encontrado": true ou false
 }"""
-    body = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": photo_b64}}]}]}
-    response = requests.post(GEMINI_URL, json=body)
-    result = response.json()
-    text = result["candidates"][0]["content"]["parts"][0]["text"]
-    text = re.sub(r'```json\n?', '', text.strip())
-    text = re.sub(r'```\n?', '', text)
-    resultado = json.loads(text.strip())
-    await save_and_reply(update, resultado)
+        body = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": photo_b64}}]}]}
+        response = requests.post(GEMINI_URL, json=body, timeout=30)
+        result = response.json()
+        text = result["candidates"][0]["content"]["parts"][0]["text"]
+        text = re.sub(r'```json\n?', '', text.strip())
+        text = re.sub(r'```\n?', '', text)
+        resultado = json.loads(text.strip())
+        await save_and_reply(update, resultado)
+    except Exception as e:
+        logger.error(f"Erro handle_photo: {e}")
+        await update.message.reply_text("Erro ao analisar a foto. Tenta novamente!")
 
 async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
