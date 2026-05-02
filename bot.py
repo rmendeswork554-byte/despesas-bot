@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.0-pro')
 
 client = MongoClient(os.environ.get("MONGODB_URL"))
 db = client["despesas"]
@@ -83,32 +83,6 @@ async def save_and_reply(update: Update, resultado: dict):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     resultado = analyze_with_gemini(update.message.text)
-    await save_and_reply(update, resultado)
-
-async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("A processar o audio...")
-    if update.message.voice:
-        file = await update.message.voice.get_file()
-    else:
-        file = await update.message.audio.get_file()
-    audio_data = await file.download_as_bytearray()
-    audio_b64 = base64.b64encode(audio_data).decode()
-    prompt = """Transcreve este audio e extrai informacao financeira.
-Responde APENAS com JSON:
-{
-  "tipo": "despesa" ou "ganho",
-  "valor": numero,
-  "categoria": "Alimentacao" ou "Transporte" ou "Saude" ou "Lazer" ou "Casa" ou "Investimentos" ou "Salario" ou "Outros",
-  "descricao": "descricao curta",
-  "encontrado": true ou false,
-  "transcricao": "texto transcrito"
-}"""
-    response = model.generate_content([prompt, {"mime_type": "audio/ogg", "data": audio_b64}])
-    text_response = re.sub(r'```json\n?', '', response.text.strip())
-    text_response = re.sub(r'```\n?', '', text_response)
-    resultado = json.loads(text_response)
-    if resultado.get('transcricao'):
-        await update.message.reply_text("Transcricao: " + resultado["transcricao"])
     await save_and_reply(update, resultado)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,7 +213,6 @@ def main():
     app.add_handler(CommandHandler("lista", lista))
     app.add_handler(CommandHandler("apagar", apagar))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_audio))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     logger.info("Bot iniciado!")
     app.run_polling()
