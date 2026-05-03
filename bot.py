@@ -32,7 +32,7 @@ def call_groq(prompt):
             "Content-Type": "application/json"
         }
         body = {
-            "model": "llama3-8b-8192",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1
         }
