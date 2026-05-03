@@ -12,8 +12,8 @@ from pymongo import MongoClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 client = MongoClient(os.environ.get("MONGODB_URL"))
 db = client["despesas"]
@@ -25,25 +25,32 @@ def get_next_id():
         return ultimo["id"] + 1
     return 1
 
-def call_gemini(prompt):
+def call_groq(prompt):
     try:
-        body = {"contents": [{"parts": [{"text": prompt}]}]}
-        response = requests.post(GEMINI_URL, json=body, timeout=30)
-        logger.info(f"Gemini response status: {response.status_code}")
-        logger.info(f"Gemini response: {response.text[:500]}")
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model": "llama3-8b-8192",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1
+        }
+        response = requests.post(GROQ_URL, json=body, headers=headers, timeout=30)
+        logger.info(f"Groq status: {response.status_code}")
         result = response.json()
-        text = result["candidates"][0]["content"]["parts"][0]["text"]
+        text = result["choices"][0]["message"]["content"]
         text = re.sub(r'```json\n?', '', text.strip())
         text = re.sub(r'```\n?', '', text)
         return json.loads(text.strip())
     except Exception as e:
-        logger.error(f"Gemini error: {e}")
+        logger.error(f"Groq error: {e}")
         raise e
 
 def analyze_text(text):
     prompt = f"""Analisa esta mensagem e extrai informacao financeira.
 Mensagem: "{text}"
-Responde APENAS com um JSON valido neste formato exato:
+Responde APENAS com um JSON valido neste formato exato sem mais nada:
 {{
   "tipo": "despesa" ou "ganho",
   "valor": numero,
@@ -52,7 +59,7 @@ Responde APENAS com um JSON valido neste formato exato:
   "encontrado": true ou false
 }}
 Se nao encontrares informacao financeira, poe "encontrado": false."""
-    return call_gemini(prompt)
+    return call_groq(prompt)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -107,19 +114,21 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await photo.get_file()
         photo_data = await file.download_as_bytearray()
         photo_b64 = base64.b64encode(photo_data).decode()
-        prompt = """Analisa este recibo e extrai o valor total e tipo de despesa.
-Responde APENAS com JSON:
-{
-  "tipo": "despesa",
-  "valor": numero,
-  "categoria": "Alimentacao" ou "Transporte" ou "Saude" ou "Lazer" ou "Casa" ou "Investimentos" ou "Outros",
-  "descricao": "descricao do recibo",
-  "encontrado": true ou false
-}"""
-        body = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": photo_b64}}]}]}
-        response = requests.post(GEMINI_URL, json=body, timeout=30)
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model": "llama-3.2-11b-vision-preview",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "Analisa este recibo e extrai o valor total. Responde APENAS com JSON: {\"tipo\": \"despesa\", \"valor\": numero, \"categoria\": \"Alimentacao\", \"descricao\": \"descricao do recibo\", \"encontrado\": true}"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"}}
+            ]}],
+            "temperature": 0.1
+        }
+        response = requests.post(GROQ_URL, json=body, headers=headers, timeout=30)
         result = response.json()
-        text = result["candidates"][0]["content"]["parts"][0]["text"]
+        text = result["choices"][0]["message"]["content"]
         text = re.sub(r'```json\n?', '', text.strip())
         text = re.sub(r'```\n?', '', text)
         resultado = json.loads(text.strip())
